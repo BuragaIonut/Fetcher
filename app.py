@@ -115,6 +115,7 @@ def main():
     # Display status
     st.subheader("Service Status")
     st.info("Scheduler is running. Fixtures will be fetched daily at 00:01 UTC for the current day and next two days.")
+    st.info("Only manual fetch is available for now.")
     
     # Manual fetch section
     st.subheader("Manual Fetch")
