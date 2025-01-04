@@ -110,7 +110,7 @@ def main():
     st.title("⚽ Football Data Manager")
     
     # Start the scheduler
-    start_scheduler()
+    # start_scheduler()
     
     # Display status
     st.subheader("Service Status")
