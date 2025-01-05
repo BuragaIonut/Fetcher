@@ -1,0 +1,187 @@
+[
+    {
+        "id": 220,
+        "name": "Cup",
+        "country": "Austria"
+    },
+    {
+        "id": 218,
+        "name": "Bundesliga",
+        "country": "Austria"
+    },
+    {
+        "id": 144,
+        "name": "Jupiler Pro League",
+        "country": "Belgium"
+    },
+    {
+        "id": 519,
+        "name": "Super Cup",
+        "country": "Belgium"
+    },
+    {
+        "id": 147,
+        "name": "Cup",
+        "country": "Belgium"
+    },
+    {
+        "id": 39,
+        "name": "Premier League",
+        "country": "England"
+    },
+    {
+        "id": 61,
+        "name": "Ligue 1",
+        "country": "France"
+    },
+    {
+        "id": 66,
+        "name": "Coupe de France",
+        "country": "France"
+    },
+    {
+        "id": 78,
+        "name": "Bundesliga",
+        "country": "Germany"
+    },
+    {
+        "id": 529,
+        "name": "Super Cup",
+        "country": "Germany"
+    },
+    {
+        "id": 135,
+        "name": "Serie A",
+        "country": "Italy"
+    },
+    {
+        "id": 547,
+        "name": "Super Cup",
+        "country": "Italy"
+    },
+    {
+        "id": 137,
+        "name": "Coppa Italia",
+        "country": "Italy"
+    },
+    {
+        "id": 88,
+        "name": "Eredivisie",
+        "country": "Netherlands"
+    },
+    {
+        "id": 543,
+        "name": "Super Cup",
+        "country": "Netherlands"
+    },
+    {
+        "id": 283,
+        "name": "Liga I",
+        "country": "Romania"
+    },
+    {
+        "id": 140,
+        "name": "La Liga",
+        "country": "Spain"
+    },
+    {
+        "id": 556,
+        "name": "Super Cup",
+        "country": "Spain"
+    },
+    {
+        "id": 143,
+        "name": "Copa del Rey",
+        "country": "Spain"
+    },
+    {
+        "id": 4,
+        "name": "Euro Championship",
+        "country": "World"
+    },
+    {
+        "id": 1,
+        "name": "World Cup",
+        "country": "World"
+    },
+    {
+        "id": 2,
+        "name": "UEFA Champions League",
+        "country": "World"
+    },
+    {
+        "id": 7,
+        "name": "Asian Cup",
+        "country": "World"
+    },
+    {
+        "id": 3,
+        "name": "UEFA Europa League",
+        "country": "World"
+    },
+    {
+        "id": 37,
+        "name": "World Cup - Qualification Intercontinental Play-offs",
+        "country": "World"
+    },
+    {
+        "id": 9,
+        "name": "Copa America",
+        "country": "World"
+    },
+    {
+        "id": 490,
+        "name": "World Cup - U20",
+        "country": "World"
+    },
+    {
+        "id": 5,
+        "name": "UEFA Nations League",
+        "country": "World"
+    },
+    {
+        "id": 31,
+        "name": "World Cup - Qualification CONCACAF",
+        "country": "World"
+    },
+    {
+        "id": 32,
+        "name": "World Cup - Qualification Europe",
+        "country": "World"
+    },
+    {
+        "id": 33,
+        "name": "World Cup - Qualification Oceania",
+        "country": "World"
+    },
+    {
+        "id": 34,
+        "name": "World Cup - Qualification South America",
+        "country": "World"
+    },
+    {
+        "id": 29,
+        "name": "World Cup - Qualification Africa",
+        "country": "World"
+    },
+    {
+        "id": 30,
+        "name": "World Cup - Qualification Asia",
+        "country": "World"
+    },
+    {
+        "id": 848,
+        "name": "UEFA Europa Conference League",
+        "country": "World"
+    },
+    {
+        "id": 960,
+        "name": "Euro Championship - Qualification",
+        "country": "World"
+    },
+    {
+        "id": 850,
+        "name": "UEFA U21 Championship - Qualification",
+        "country": "World"
+    }
+]
