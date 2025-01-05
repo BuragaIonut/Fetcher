@@ -92,6 +92,89 @@ def fetch_and_store_fixtures(date):
         logging.error(f"Error storing fixtures for {date}: {str(e)}")
         return 0
 
+def fetch_and_store_predictions(fixture_id):
+    """Fetch predictions from API and store them in the database"""
+    url = "https://api-football-v1.p.rapidapi.com/v3/predictions"
+    querystring = {"fixture": fixture_id}
+    headers = {
+        "x-rapidapi-key": os.getenv('RAPIDAPI_KEY'),
+        "x-rapidapi-host": "api-football-v1.p.rapidapi.com"
+    }
+    
+    try:
+        logging.info(f"Fetching predictions for fixture {fixture_id}")
+        response = requests.get(url, headers=headers, params=querystring)
+        
+        if response.status_code != 200:
+            raise Exception(f"API request failed with status {response.status_code}")
+        
+        prediction_data = response.json()
+        
+        if not prediction_data['response']:
+            logging.warning(f"No prediction data found for fixture {fixture_id}")
+            return False
+            
+        pred = prediction_data['response'][0]
+        
+        prediction_record = {
+            'fixture_id': fixture_id,
+            'winner_team_name': pred['predictions']['winner']['name'] if pred['predictions']['winner'] else None,
+            'winner_comment': pred['predictions']['winner']['comment'] if pred['predictions']['winner'] else None,
+            'win_or_draw': pred['predictions']['win_or_draw'],
+            'under_over': pred['predictions']['under_over'],
+            'goals_home': pred['predictions']['goals']['home'],
+            'goals_away': pred['predictions']['goals']['away'],
+            'advice': pred['predictions']['advice'],
+            'percent_home': pred['predictions']['percent']['home'],
+            'percent_draw': pred['predictions']['percent']['draw'],
+            'percent_away': pred['predictions']['percent']['away'],
+            'comp_form_home': pred['comparison']['form']['home'],
+            'comp_form_away': pred['comparison']['form']['away'],
+            'comp_att_home': pred['comparison']['att']['home'],
+            'comp_att_away': pred['comparison']['att']['away'],
+            'comp_def_home': pred['comparison']['def']['home'],
+            'comp_def_away': pred['comparison']['def']['away'],
+            'comp_poisson_home': pred['comparison']['poisson_distribution']['home'],
+            'comp_poisson_away': pred['comparison']['poisson_distribution']['away'],
+            'comp_h2h_home': pred['comparison']['h2h']['home'],
+            'comp_h2h_away': pred['comparison']['h2h']['away'],
+            'comp_goals_home': pred['comparison']['goals']['home'],
+            'comp_goals_away': pred['comparison']['goals']['away'],
+            'comp_total_home': pred['comparison']['total']['home'],
+            'comp_total_away': pred['comparison']['total']['away']
+        }
+        
+        # Upsert the prediction
+        supabase.table('football_predictions').upsert(
+            prediction_record,
+            on_conflict='fixture_id'
+        ).execute()
+        
+        logging.info(f"Stored predictions for fixture {fixture_id}")
+        return True
+        
+    except Exception as e:
+        logging.error(f"Error storing predictions for fixture {fixture_id}: {str(e)}")
+        return False
+
+def get_major_league_fixtures(date):
+    """Get fixtures from major leagues for a specific date"""
+    try:
+        major_leagues = load_major_leagues()
+        major_league_ids = [league['id'] for league in major_leagues]
+        
+        fixtures = supabase.table('football_fixtures') \
+            .select('fixture_id') \
+            .gte('fixture_date', f"{date}T00:00:00Z") \
+            .lt('fixture_date', f"{date + timedelta(days=1)}T00:00:00Z") \
+            .in_('league_id', major_league_ids) \
+            .execute()
+            
+        return [fixture['fixture_id'] for fixture in fixtures.data]
+    except Exception as e:
+        logging.error(f"Error getting major league fixtures: {str(e)}")
+        return []
+
 def get_fixtures_stats(date):
     """Get statistics for fixtures on a specific date"""
     try:
@@ -167,22 +250,53 @@ def main():
     
     # Manual fetch section
     st.subheader("Manual Fetch")
-    if st.button("Fetch Fixtures Now"):
-        current_date = datetime.now(pytz.UTC).date()
-        total_stored = 0
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if st.button("Fetch Fixtures Now"):
+            current_date = datetime.now(pytz.UTC).date()
+            total_stored = 0
+            
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            
+            for i in range(3):
+                target_date = current_date + timedelta(days=i)
+                status_text.text(f"Fetching fixtures for {target_date}...")
+                stored_count = fetch_and_store_fixtures(target_date)
+                total_stored += stored_count
+                progress_bar.progress((i + 1) / 3)
+                time.sleep(5)  # Respect API rate limits
+            
+            st.success(f"Successfully stored {total_stored} fixtures")
+    
+    with col2:
+        if st.button("Fetch Predictions Now"):
+            current_date = datetime.now(pytz.UTC).date()
+            total_predictions = 0
+            
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            
+            for i in range(3):
+                target_date = current_date + timedelta(days=i)
+                status_text.text(f"Fetching predictions for {target_date}...")
+                
+                # Get fixtures for major leagues
+                fixture_ids = get_major_league_fixtures(target_date)
+                predictions_stored = 0
+                
+                for idx, fixture_id in enumerate(fixture_ids):
+                    if fetch_and_store_predictions(fixture_id):
+                        predictions_stored += 1
+                    progress_bar.progress((i * len(fixture_ids) + idx + 1) / (len(fixture_ids) * 3))
+                    time.sleep(1)  # Respect API rate limits
+                
+                total_predictions += predictions_stored
+                logging.info(f"Stored {predictions_stored} predictions for {target_date}")
+            
+            st.success(f"Successfully stored {total_predictions} predictions")
         
-        progress_bar = st.progress(0)
-        status_text = st.empty()
-        
-        for i in range(3):
-            target_date = current_date + timedelta(days=i)
-            status_text.text(f"Fetching fixtures for {target_date}...")
-            stored_count = fetch_and_store_fixtures(target_date)
-            total_stored += stored_count
-            progress_bar.progress((i + 1) / 3)
-            time.sleep(5)  # Respect API rate limits
-        
-        st.success(f"Successfully stored {total_stored} fixtures")
     
     # Display current data stats
     st.subheader("Current Data Statistics")
