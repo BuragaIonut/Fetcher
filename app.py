@@ -144,12 +144,95 @@ def fetch_and_store_predictions(fixture_id):
             'comp_total_away': pred['comparison']['total']['away']
         }
         
-        # Upsert the prediction
-        supabase.table('football_predictions') \
+        # Get the prediction_id from the insert response
+        prediction_response = supabase.table('football_predictions') \
             .insert(prediction_record) \
             .execute()
         
-        logging.info(f"Stored predictions for fixture {fixture_id}")
+        prediction_id = prediction_response.data[0]['id']
+        
+        # Store goals distribution for both teams
+        for team_side in ['home', 'away']:
+            # Store goals for
+            goals_for = pred['teams'][team_side]['league']['goals']['for']['minute']
+            goals_for_record = {
+                'prediction_id': prediction_id,
+                'team_side': team_side,
+                'goal_type': 'for',
+                'interval_0_15': goals_for['0-15']['total'] or 0,
+                'interval_0_15_percentage': goals_for['0-15']['percentage'],
+                'interval_16_30': goals_for['16-30']['total'] or 0,
+                'interval_16_30_percentage': goals_for['16-30']['percentage'],
+                'interval_31_45': goals_for['31-45']['total'] or 0,
+                'interval_31_45_percentage': goals_for['31-45']['percentage'],
+                'interval_46_60': goals_for['46-60']['total'] or 0,
+                'interval_46_60_percentage': goals_for['46-60']['percentage'],
+                'interval_61_75': goals_for['61-75']['total'] or 0,
+                'interval_61_75_percentage': goals_for['61-75']['percentage'],
+                'interval_76_90': goals_for['76-90']['total'] or 0,
+                'interval_76_90_percentage': goals_for['76-90']['percentage'],
+                'interval_91_105': goals_for['91-105']['total'] or 0,
+                'interval_91_105_percentage': goals_for['91-105']['percentage'],
+                'interval_106_120': goals_for['106-120']['total'] or 0,
+                'interval_106_120_percentage': goals_for['106-120']['percentage']
+            }
+            
+            # Store goals against
+            goals_against = pred['teams'][team_side]['league']['goals']['against']['minute']
+            goals_against_record = {
+                'prediction_id': prediction_id,
+                'team_side': team_side,
+                'goal_type': 'against',
+                'interval_0_15': goals_against['0-15']['total'] or 0,
+                'interval_0_15_percentage': goals_against['0-15']['percentage'],
+                'interval_16_30': goals_against['16-30']['total'] or 0,
+                'interval_16_30_percentage': goals_against['16-30']['percentage'],
+                'interval_31_45': goals_against['31-45']['total'] or 0,
+                'interval_31_45_percentage': goals_against['31-45']['percentage'],
+                'interval_46_60': goals_against['46-60']['total'] or 0,
+                'interval_46_60_percentage': goals_against['46-60']['percentage'],
+                'interval_61_75': goals_against['61-75']['total'] or 0,
+                'interval_61_75_percentage': goals_against['61-75']['percentage'],
+                'interval_76_90': goals_against['76-90']['total'] or 0,
+                'interval_76_90_percentage': goals_against['76-90']['percentage'],
+                'interval_91_105': goals_against['91-105']['total'] or 0,
+                'interval_91_105_percentage': goals_against['91-105']['percentage'],
+                'interval_106_120': goals_against['106-120']['total'] or 0,
+                'interval_106_120_percentage': goals_against['106-120']['percentage']
+            }
+            
+            # Insert goals records
+            supabase.table('football_predictions_goals').insert([goals_for_record, goals_against_record]).execute()
+            
+            # Store cards distribution
+            for card_type in ['yellow', 'red']:
+                cards = pred['teams'][team_side]['league']['cards'][card_type]
+                cards_record = {
+                    'prediction_id': prediction_id,
+                    'team_side': team_side,
+                    'card_type': card_type,
+                    'interval_0_15': cards['0-15']['total'] or 0,
+                    'interval_0_15_percentage': cards['0-15']['percentage'],
+                    'interval_16_30': cards['16-30']['total'] or 0,
+                    'interval_16_30_percentage': cards['16-30']['percentage'],
+                    'interval_31_45': cards['31-45']['total'] or 0,
+                    'interval_31_45_percentage': cards['31-45']['percentage'],
+                    'interval_46_60': cards['46-60']['total'] or 0,
+                    'interval_46_60_percentage': cards['46-60']['percentage'],
+                    'interval_61_75': cards['61-75']['total'] or 0,
+                    'interval_61_75_percentage': cards['61-75']['percentage'],
+                    'interval_76_90': cards['76-90']['total'] or 0,
+                    'interval_76_90_percentage': cards['76-90']['percentage'],
+                    'interval_91_105': cards['91-105']['total'] or 0,
+                    'interval_91_105_percentage': cards['91-105']['percentage'],
+                    'interval_106_120': cards['106-120']['total'] or 0,
+                    'interval_106_120_percentage': cards['106-120']['percentage']
+                }
+                
+                # Insert cards record
+                supabase.table('football_predictions_cards').insert(cards_record).execute()
+        
+        logging.info(f"Stored predictions and statistics for fixture {fixture_id}")
         return True
         
     except Exception as e:
