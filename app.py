@@ -151,7 +151,7 @@ def scheduled_task():
             time.sleep(60)
 
 def main():
-    st.title("⚽ Football Data Manager")
+    st.title("⚽ Football Data Manager ⚽")
     
     # # Start the scheduler
     # if 'scheduler_started' not in st.session_state:
