@@ -9,6 +9,7 @@ import time
 import logging
 from streamlit.runtime.scriptrunner import add_script_run_ctx
 import threading
+import json
 
 # Set up logging
 logging.basicConfig(
@@ -25,8 +26,17 @@ supabase = create_client(
     os.getenv('SUPABASE_KEY')
 )
 
+def load_major_leagues():
+    """Load major leagues from JSON file"""
+    try:
+        with open("major_leagues.json", "r") as f:
+            return json.load(f)
+    except Exception as e:
+        logging.error(f"Error loading major leagues: {str(e)}")
+        return []
+
 def fetch_and_store_fixtures(date):
-    """Fetch fixtures from API and store them"""
+    """Fetch fixtures from API and store them in the new structure"""
     url = "https://api-football-v1.p.rapidapi.com/v3/fixtures"
     
     querystring = {"date": str(date)}
@@ -45,17 +55,31 @@ def fetch_and_store_fixtures(date):
         fixtures_data = fixtures_response.json()
         stored_count = 0
         
-        # Store each fixture in Supabase
+        # Store each fixture in Supabase with the new structure
         for fixture in fixtures_data['response']:
             fixture_record = {
-                'date': str(date),
                 'fixture_id': fixture['fixture']['id'],
-                'fixture_data': fixture,
+                'home_team_id': fixture['teams']['home']['id'],
+                'home_team_name': fixture['teams']['home']['name'],
+                'home_team_logo': fixture['teams']['home']['logo'],
+                'away_team_id': fixture['teams']['away']['id'],
+                'away_team_name': fixture['teams']['away']['name'],
+                'away_team_logo': fixture['teams']['away']['logo'],
+                'league_id': fixture['league']['id'],
+                'league_name': fixture['league']['name'],
+                'league_logo': fixture['league']['logo'],
+                'league_flag': fixture['league'].get('flag'),
+                'league_country': fixture['league']['country'],
+                'fixture_date': fixture['fixture']['date'],
+                'venue_id': fixture['fixture']['venue']['id'],
+                'venue_city': fixture['fixture']['venue']['city'],
+                'venue_name': fixture['fixture']['venue']['name'],
+                'raw_data': fixture,
                 'created_at': datetime.utcnow().isoformat()
             }
             
             # Upsert the fixture
-            supabase.table('fixtures').upsert(
+            supabase.table('football_fixtures').upsert(
                 fixture_record,
                 on_conflict='fixture_id'
             ).execute()
@@ -67,6 +91,35 @@ def fetch_and_store_fixtures(date):
     except Exception as e:
         logging.error(f"Error storing fixtures for {date}: {str(e)}")
         return 0
+
+def get_fixtures_stats(date):
+    """Get statistics for fixtures on a specific date"""
+    try:
+        # Get total fixtures
+        total_fixtures = supabase.table('football_fixtures') \
+            .select('fixture_id') \
+            .gte('fixture_date', f"{date}T00:00:00Z") \
+            .lt('fixture_date', f"{date + timedelta(days=1)}T00:00:00Z") \
+            .execute()
+        
+        # Get major league fixtures
+        major_leagues = load_major_leagues()
+        major_league_ids = [league['id'] for league in major_leagues]
+        
+        major_fixtures = supabase.table('football_fixtures') \
+            .select('fixture_id') \
+            .gte('fixture_date', f"{date}T00:00:00Z") \
+            .lt('fixture_date', f"{date + timedelta(days=1)}T00:00:00Z") \
+            .in_('league_id', major_league_ids) \
+            .execute()
+        
+        return {
+            'total': len(total_fixtures.data),
+            'major': len(major_fixtures.data)
+        }
+    except Exception as e:
+        logging.error(f"Error getting fixtures stats: {str(e)}")
+        return {'total': 0, 'major': 0}
 
 def scheduled_task():
     """Task to fetch fixtures for current day and next two days"""
@@ -97,25 +150,20 @@ def scheduled_task():
             # Check every minute
             time.sleep(60)
 
-def start_scheduler():
-    """Start the scheduler in a separate thread"""
-    if 'scheduler_started' not in st.session_state:
-        scheduler_thread = threading.Thread(target=scheduled_task, daemon=True)
-        add_script_run_ctx(scheduler_thread)
-        scheduler_thread.start()
-        st.session_state.scheduler_started = True
-        logging.info("Scheduler started")
-
 def main():
     st.title("⚽ Football Data Manager")
     
-    # Start the scheduler
-    # start_scheduler()
+    # # Start the scheduler
+    # if 'scheduler_started' not in st.session_state:
+    #     scheduler_thread = threading.Thread(target=scheduled_task, daemon=True)
+    #     add_script_run_ctx(scheduler_thread)
+    #     scheduler_thread.start()
+    #     st.session_state.scheduler_started = True
+    #     logging.info("Scheduler started")
     
     # Display status
     st.subheader("Service Status")
     st.info("Scheduler is running. Fixtures will be fetched daily at 00:01 UTC for the current day and next two days.")
-    st.info("Only manual fetch is available for now.")
     
     # Manual fetch section
     st.subheader("Manual Fetch")
@@ -148,14 +196,9 @@ def main():
     
     for i, date in enumerate(dates_to_check):
         with cols[i]:
-            fixtures_count = len(
-                supabase.table('fixtures')
-                .select('fixture_id')
-                .eq('date', str(date))
-                .execute()
-                .data
-            )
-            st.metric(f"Fixtures {date}", fixtures_count)
+            stats = get_fixtures_stats(date)
+            st.metric(f"Date: {date}", f"Total: {stats['total']}")
+            st.metric("Major Leagues", stats['major'])
 
 if __name__ == "__main__":
     main()
