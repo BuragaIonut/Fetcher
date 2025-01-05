@@ -145,10 +145,9 @@ def fetch_and_store_predictions(fixture_id):
         }
         
         # Upsert the prediction
-        supabase.table('football_predictions').upsert(
-            prediction_record,
-            on_conflict='fixture_id'
-        ).execute()
+        supabase.table('football_predictions') \
+            .insert(prediction_record) \
+            .execute()
         
         logging.info(f"Stored predictions for fixture {fixture_id}")
         return True
