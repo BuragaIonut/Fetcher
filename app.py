@@ -318,17 +318,13 @@ def scheduled_task():
 def main():
     st.title("⚽ Football Data Manager ⚽")
     
-    # # Start the scheduler
-    # if 'scheduler_started' not in st.session_state:
-    #     scheduler_thread = threading.Thread(target=scheduled_task, daemon=True)
-    #     add_script_run_ctx(scheduler_thread)
-    #     scheduler_thread.start()
-    #     st.session_state.scheduler_started = True
-    #     logging.info("Scheduler started")
-    
-    # Display status
-    st.subheader("Service Status")
-    st.info("Scheduler is running. Fixtures will be fetched daily at 00:01 UTC for the current day and next two days.")
+    # Add date picker
+    selected_date = st.date_input(
+        "Select date for data fetch",
+        value=datetime.now(pytz.UTC).date(),
+        min_value=datetime.now(pytz.UTC).date() - timedelta(days=30),
+        max_value=datetime.now(pytz.UTC).date() + timedelta(days=30)
+    )
     
     # Manual fetch section
     st.subheader("Manual Fetch")
@@ -336,65 +332,40 @@ def main():
     
     with col1:
         if st.button("Fetch Fixtures Now"):
-            current_date = datetime.now(pytz.UTC).date()
-            total_stored = 0
-            
             progress_bar = st.progress(0)
             status_text = st.empty()
             
-            for i in range(3):
-                target_date = current_date + timedelta(days=i)
-                status_text.text(f"Fetching fixtures for {target_date}...")
-                stored_count = fetch_and_store_fixtures(target_date)
-                total_stored += stored_count
-                progress_bar.progress((i + 1) / 3)
-                time.sleep(5)  # Respect API rate limits
+            status_text.text(f"Fetching fixtures for {selected_date}...")
+            stored_count = fetch_and_store_fixtures(selected_date)
+            progress_bar.progress(1.0)
             
-            st.success(f"Successfully stored {total_stored} fixtures")
+            st.success(f"Successfully stored {stored_count} fixtures")
     
     with col2:
         if st.button("Fetch Predictions Now"):
-            current_date = datetime.now(pytz.UTC).date()
-            total_predictions = 0
-            
             progress_bar = st.progress(0)
             status_text = st.empty()
             
-            for i in range(3):
-                target_date = current_date + timedelta(days=i)
-                status_text.text(f"Fetching predictions for {target_date}...")
-                
-                # Get fixtures for major leagues
-                fixture_ids = get_major_league_fixtures(target_date)
-                predictions_stored = 0
-                
-                for idx, fixture_id in enumerate(fixture_ids):
-                    if fetch_and_store_predictions(fixture_id):
-                        predictions_stored += 1
-                    progress_bar.progress((i * len(fixture_ids) + idx + 1) / (len(fixture_ids) * 3))
-                    time.sleep(1)  # Respect API rate limits
-                
-                total_predictions += predictions_stored
-                logging.info(f"Stored {predictions_stored} predictions for {target_date}")
+            status_text.text(f"Fetching predictions for {selected_date}...")
+            
+            # Get fixtures for major leagues
+            fixture_ids = get_major_league_fixtures(selected_date)
+            total_predictions = 0
+            
+            for idx, fixture_id in enumerate(fixture_ids):
+                if fetch_and_store_predictions(fixture_id):
+                    total_predictions += 1
+                progress_bar.progress((idx + 1) / len(fixture_ids) if fixture_ids else 1.0)
+                time.sleep(1)  # Respect API rate limits
             
             st.success(f"Successfully stored {total_predictions} predictions")
-        
     
     # Display current data stats
     st.subheader("Current Data Statistics")
     
-    # Get dates to check
-    current_date = datetime.now(pytz.UTC).date()
-    dates_to_check = [current_date + timedelta(days=i) for i in range(3)]
-    
-    # Create columns for each date
-    cols = st.columns(3)
-    
-    for i, date in enumerate(dates_to_check):
-        with cols[i]:
-            stats = get_fixtures_stats(date)
-            st.metric(f"Date: {date}", f"Total: {stats['total']}")
-            st.metric("Major Leagues", stats['major'])
+    stats = get_fixtures_stats(selected_date)
+    st.metric(f"Date: {selected_date}", f"Total: {stats['total']}")
+    st.metric("Major Leagues", stats['major'])
 
 if __name__ == "__main__":
     main()
