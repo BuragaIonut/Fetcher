@@ -1,5 +1,30 @@
 [
     {
+        "id": 129,
+        "name": "Primera Nacional",
+        "country": "Argentina"
+    },
+    {
+        "id": 128,
+        "name": "Liga Profesional Argentina",
+        "country": "Argentina"
+    },
+    {
+        "id": 810,
+        "name": "Super Copa",
+        "country": "Argentina"
+    },
+    {
+        "id": 188,
+        "name": "A-League",
+        "country": "Australia"
+    },
+    {
+        "id": 874,
+        "name": "Australia Cup",
+        "country": "Australia"
+    },
+    {
         "id": 220,
         "name": "Cup",
         "country": "Austria"
@@ -25,13 +50,38 @@
         "country": "Belgium"
     },
     {
+        "id": 119,
+        "name": "Superliga",
+        "country": "Denmark"
+    },
+    {
         "id": 39,
         "name": "Premier League",
         "country": "England"
     },
     {
+        "id": 40,
+        "name": "Championship",
+        "country": "England"
+    },
+    {
+        "id": 45,
+        "name": "FA Cup",
+        "country": "England"
+    },
+    {
+        "id": 871,
+        "name": "Premier League Cup",
+        "country": "England"
+    },
+    {
         "id": 61,
         "name": "Ligue 1",
+        "country": "France"
+    },
+    {
+        "id": 62,
+        "name": "Ligue 2",
         "country": "France"
     },
     {
@@ -42,6 +92,11 @@
     {
         "id": 78,
         "name": "Bundesliga",
+        "country": "Germany"
+    },
+    {
+        "id": 79,
+        "name": "2. Bundesliga",
         "country": "Germany"
     },
     {
@@ -60,6 +115,11 @@
         "country": "Italy"
     },
     {
+        "id": 136,
+        "name": "Serie B",
+        "country": "Italy"
+    },
+    {
         "id": 137,
         "name": "Coppa Italia",
         "country": "Italy"
@@ -75,9 +135,29 @@
         "country": "Netherlands"
     },
     {
+        "id": 555,
+        "name": "Supercupa",
+        "country": "Romania"
+    },
+    {
         "id": 283,
         "name": "Liga I",
         "country": "Romania"
+    },
+    {
+        "id": 285,
+        "name": "Cupa Rom�niei",
+        "country": "Romania"
+    },
+    {
+        "id": 179,
+        "name": "Premiership",
+        "country": "Scotland"
+    },
+    {
+        "id": 181,
+        "name": "FA Cup",
+        "country": "Scotland"
     },
     {
         "id": 140,
@@ -90,9 +170,44 @@
         "country": "Spain"
     },
     {
+        "id": 141,
+        "name": "Segunda Divisi�n",
+        "country": "Spain"
+    },
+    {
         "id": 143,
         "name": "Copa del Rey",
         "country": "Spain"
+    },
+    {
+        "id": 207,
+        "name": "Super League",
+        "country": "Switzerland"
+    },
+    {
+        "id": 209,
+        "name": "Schweizer Cup",
+        "country": "Switzerland"
+    },
+    {
+        "id": 203,
+        "name": "S�per Lig",
+        "country": "Turkey"
+    },
+    {
+        "id": 204,
+        "name": "1. Lig",
+        "country": "Turkey"
+    },
+    {
+        "id": 206,
+        "name": "Cup",
+        "country": "Turkey"
+    },
+    {
+        "id": 551,
+        "name": "Super Cup",
+        "country": "Turkey"
     },
     {
         "id": 4,
