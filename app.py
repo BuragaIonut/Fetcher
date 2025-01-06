@@ -113,13 +113,28 @@ def aggregate_intervals(minute_data, first_half_ranges=["0-15", "16-30", "31-45"
 def process_goals_data(team_data, team_side):
     """
     Process goals data for a team, returning records for both 'for' and 'against'.
+    Averages the goals based on games played for each side.
     """
     goals_records = []
+    
+    # Get number of games played for the relevant side
+    games_played = team_data['league']['fixtures']['played']
+    home_games = games_played['home']
+    away_games = games_played['away']
     
     for goal_type in ['for', 'against']:
         minute_data = team_data['league']['goals'][goal_type]['minute']
         first_half, second_half = aggregate_intervals(minute_data)
         
+        # Calculate per-game average based on home/away games
+        games = home_games if team_side == 'home' else away_games
+        if games > 0:  # Prevent division by zero
+            first_half = round(first_half / games, 2)
+            second_half = round(second_half / games, 2)
+        else:
+            first_half = 0
+            second_half = 0
+            
         goals_records.append({
             'team_side': team_side,
             'goal_type': goal_type,
@@ -172,7 +187,6 @@ def fetch_and_store_predictions(fixture_id):
             
         pred = prediction_data['response'][0]
         
-        # Store main prediction data (your existing code remains the same)
         prediction_record = {
             'fixture_id': fixture_id,
             'winner_team_name': pred['predictions']['winner']['name'] if pred['predictions']['winner'] else None,
