@@ -299,7 +299,13 @@ def main():
             progress_bar.progress(1.0)
             
             st.success(f"Successfully stored {stored_count} fixtures")
-    
+        
+        # Add button to delete fixtures
+        if st.button("Delete Fixtures for Selected Date"):
+            # Logic to delete fixtures
+            supabase.table('football_fixtures').delete().eq('fixture_date', f"{selected_date}T00:00:00Z").execute()
+            st.success(f"Successfully deleted fixtures for {selected_date}")
+
     with col2:
         if st.button("Fetch Predictions Now"):
             progress_bar = st.progress(0)
@@ -318,7 +324,13 @@ def main():
                 time.sleep(1)  # Respect API rate limits
             
             st.success(f"Successfully stored {total_predictions} predictions")
-    
+        
+        # Add button to delete predictions
+        if st.button("Delete Predictions for Selected Date"):
+            # Logic to delete predictions
+            supabase.table('football_predictions').delete().in_('fixture_id', get_major_league_fixtures(selected_date)).execute()
+            st.success(f"Successfully deleted predictions for {selected_date}")
+
     # Display current data stats
     st.subheader("Current Data Statistics")
     
