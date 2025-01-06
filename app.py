@@ -145,6 +145,12 @@ def fetch_and_store_predictions(fixture_id):
         }
         
         # Get the prediction_id from the insert response
+        #TODO use upsert
+        supabase.table('football_predictions') \
+            .delete() \
+            .eq('fixture_id', fixture_id) \
+            .execute()
+            
         prediction_response = supabase.table('football_predictions') \
             .insert(prediction_record) \
             .execute()
