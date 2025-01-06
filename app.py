@@ -92,76 +92,67 @@ def fetch_and_store_fixtures(date):
         logging.error(f"Error storing fixtures for {date}: {str(e)}")
         return 0
 
-def aggregate_intervals(minute_data, first_half_ranges=["0-15", "16-30", "31-45"], 
-                       second_half_ranges=["46-60", "61-75", "76-90"]):
+def calculate_interval_averages(minute_data, games_played):
     """
-    Aggregates time interval data into first half (0-45) and second half (46-90) totals.
-    Handles null values by treating them as 0.
+    Calculate averages for first and second half from minute data
     """
-    first_half_total = sum(
-        minute_data[interval]["total"] or 0 
-        for interval in first_half_ranges
-    )
-    
-    second_half_total = sum(
-        minute_data[interval]["total"] or 0 
-        for interval in second_half_ranges
-    )
-    
-    return first_half_total, second_half_total
-
-def process_goals_data(team_data, team_side):
-    """
-    Process goals data for a team, returning records for both 'for' and 'against'.
-    Averages the goals based on games played for each side.
-    """
-    goals_records = []
-    
-    # Get number of games played for the relevant side
-    games_played = team_data['league']['fixtures']['played']
-    home_games = games_played['home']
-    away_games = games_played['away']
-    
-    for goal_type in ['for', 'against']:
-        minute_data = team_data['league']['goals'][goal_type]['minute']
-        first_half, second_half = aggregate_intervals(minute_data)
+    if games_played == 0:
+        return 0, 0
         
-        # Calculate per-game average based on home/away games
-        games = home_games if team_side == 'home' else away_games
-        if games > 0:  # Prevent division by zero
-            first_half = round(first_half / games, 2)
-            second_half = round(second_half / games, 2)
-        else:
-            first_half = 0
-            second_half = 0
-            
-        goals_records.append({
-            'team_side': team_side,
-            'goal_type': goal_type,
-            'interval_0_45': first_half,
-            'interval_46_90': second_half
-        })
+    first_half = sum(
+        minute_data[interval]["total"] or 0 
+        for interval in ["0-15", "16-30", "31-45"]
+    ) / games_played
     
-    return goals_records
+    second_half = sum(
+        minute_data[interval]["total"] or 0 
+        for interval in ["46-60", "61-75", "76-90"]
+    ) / games_played
+    
+    return round(first_half, 2), round(second_half, 2)
 
-def process_cards_data(team_data, team_side):
+def process_team_stats(team_data):
     """
-    Process cards data for a team, returning records for both yellow and red cards.
+    Process all relevant statistics for a team
     """
-    cards_records = []
+    stats = {}
     
-    for card_type in ['yellow', 'red']:
-        minute_data = team_data['league']['cards'][card_type]
-        first_half, second_half = aggregate_intervals(minute_data)
+    # Get games played
+    home_games = team_data['league']['fixtures']['played']['home']
+    away_games = team_data['league']['fixtures']['played']['away']
+    
+    # Process goals
+    goals_for = team_data['league']['goals']['for']['minute']
+    goals_against = team_data['league']['goals']['against']['minute']
+    
+    # Calculate scoring averages
+    if home_games > 0:
+        home_first_half, home_second_half = calculate_interval_averages(goals_for, home_games)
+        stats['scored_home_first_half_average'] = home_first_half
+        stats['scored_home_second_half_average'] = home_second_half
         
-        cards_records.append({
-            'team_side': team_side,
-            'card_type': card_type,
-            'interval_0_45': first_half,
-            'interval_46_90': second_half
-        })
+        home_conc_first, home_conc_second = calculate_interval_averages(goals_against, home_games)
+        stats['conceded_home_first_half_average'] = home_conc_first
+        stats['conceded_home_second_half_average'] = home_conc_second
     
-    return cards_records
+    if away_games > 0:
+        away_first_half, away_second_half = calculate_interval_averages(goals_for, away_games)
+        stats['scored_away_first_half_average'] = away_first_half
+        stats['scored_away_second_half_average'] = away_second_half
+        
+        away_conc_first, away_conc_second = calculate_interval_averages(goals_against, away_games)
+        stats['conceded_away_first_half_average'] = away_conc_first
+        stats['conceded_away_second_half_average'] = away_conc_second
+    
+    # Process yellow cards
+    yellow_cards = team_data['league']['cards']['yellow']
+    total_games = home_games + away_games
+    if total_games > 0:
+        cards_first_half, cards_second_half = calculate_interval_averages(yellow_cards, total_games)
+        stats['yellow_cards_first_half_average'] = cards_first_half
+        stats['yellow_cards_second_half_average'] = cards_second_half
+    
+    return stats
 
 def fetch_and_store_predictions(fixture_id):
     """Modified version of your existing function"""
@@ -215,28 +206,47 @@ def fetch_and_store_predictions(fixture_id):
             'comp_total_away': pred['comparison']['total']['away']
         }
         
-        prediction_response = supabase.table('football_predictions').upsert(
+        supabase.table('football_predictions').upsert(
             prediction_record,
             on_conflict='fixture_id'
         ).execute()
         
-        prediction_id = prediction_response.data[0]['id']
+        # Process stats for both teams
+        home_stats = process_team_stats(pred['teams']['home'])
+        away_stats = process_team_stats(pred['teams']['away'])
         
-        # Process and store goals data for both teams
-        for team_side in ['home', 'away']:
-            team_data = pred['teams'][team_side]
-            
-            # Process and store goals
-            goals_records = process_goals_data(team_data, team_side)
-            for record in goals_records:
-                record['prediction_id'] = prediction_id
-                supabase.table('football_predictions_goals').insert(record).execute()
-            
-            # Process and store cards
-            cards_records = process_cards_data(team_data, team_side)
-            for record in cards_records:
-                record['prediction_id'] = prediction_id
-                supabase.table('football_predictions_cards').insert(record).execute()
+        # Prepare record
+        stats_record = {
+            'fixture_id': fixture_id,
+            # Home team stats
+            'home_team_yellow_cards_first_half_average': home_stats.get('yellow_cards_first_half_average'),
+            'home_team_yellow_cards_second_half_average': home_stats.get('yellow_cards_second_half_average'),
+            'home_team_scored_home_first_half_average': home_stats.get('scored_home_first_half_average'),
+            'home_team_scored_home_second_half_average': home_stats.get('scored_home_second_half_average'),
+            'home_team_scored_away_first_half_average': home_stats.get('scored_away_first_half_average'),
+            'home_team_scored_away_second_half_average': home_stats.get('scored_away_second_half_average'),
+            'home_team_conceded_home_first_half_average': home_stats.get('conceded_home_first_half_average'),
+            'home_team_conceded_home_second_half_average': home_stats.get('conceded_home_second_half_average'),
+            'home_team_conceded_away_first_half_average': home_stats.get('conceded_away_first_half_average'),
+            'home_team_conceded_away_second_half_average': home_stats.get('conceded_away_second_half_average'),
+            # Away team stats
+            'away_team_yellow_cards_first_half_average': away_stats.get('yellow_cards_first_half_average'),
+            'away_team_yellow_cards_second_half_average': away_stats.get('yellow_cards_second_half_average'),
+            'away_team_scored_home_first_half_average': away_stats.get('scored_home_first_half_average'),
+            'away_team_scored_home_second_half_average': away_stats.get('scored_home_second_half_average'),
+            'away_team_scored_away_first_half_average': away_stats.get('scored_away_first_half_average'),
+            'away_team_scored_away_second_half_average': away_stats.get('scored_away_second_half_average'),
+            'away_team_conceded_home_first_half_average': away_stats.get('conceded_home_first_half_average'),
+            'away_team_conceded_home_second_half_average': away_stats.get('conceded_home_second_half_average'),
+            'away_team_conceded_away_first_half_average': away_stats.get('conceded_away_first_half_average'),
+            'away_team_conceded_away_second_half_average': away_stats.get('conceded_away_second_half_average'),
+        }
+        
+        # Upsert the record
+        supabase.table('football_predictions_stats').upsert(
+            stats_record,
+            on_conflict='fixture_id'
+        ).execute()
         
         logging.info(f"Stored predictions and statistics for fixture {fixture_id}")
         return True
