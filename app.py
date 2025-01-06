@@ -92,8 +92,64 @@ def fetch_and_store_fixtures(date):
         logging.error(f"Error storing fixtures for {date}: {str(e)}")
         return 0
 
+def aggregate_intervals(minute_data, first_half_ranges=["0-15", "16-30", "31-45"], 
+                       second_half_ranges=["46-60", "61-75", "76-90"]):
+    """
+    Aggregates time interval data into first half (0-45) and second half (46-90) totals.
+    Handles null values by treating them as 0.
+    """
+    first_half_total = sum(
+        minute_data[interval]["total"] or 0 
+        for interval in first_half_ranges
+    )
+    
+    second_half_total = sum(
+        minute_data[interval]["total"] or 0 
+        for interval in second_half_ranges
+    )
+    
+    return first_half_total, second_half_total
+
+def process_goals_data(team_data, team_side):
+    """
+    Process goals data for a team, returning records for both 'for' and 'against'.
+    """
+    goals_records = []
+    
+    for goal_type in ['for', 'against']:
+        minute_data = team_data['league']['goals'][goal_type]['minute']
+        first_half, second_half = aggregate_intervals(minute_data)
+        
+        goals_records.append({
+            'team_side': team_side,
+            'goal_type': goal_type,
+            'interval_0_45': first_half,
+            'interval_46_90': second_half
+        })
+    
+    return goals_records
+
+def process_cards_data(team_data, team_side):
+    """
+    Process cards data for a team, returning records for both yellow and red cards.
+    """
+    cards_records = []
+    
+    for card_type in ['yellow', 'red']:
+        minute_data = team_data['league']['cards'][card_type]
+        first_half, second_half = aggregate_intervals(minute_data)
+        
+        cards_records.append({
+            'team_side': team_side,
+            'card_type': card_type,
+            'interval_0_45': first_half,
+            'interval_46_90': second_half
+        })
+    
+    return cards_records
+
 def fetch_and_store_predictions(fixture_id):
-    """Fetch predictions from API and store them in the database"""
+    """Modified version of your existing function"""
     url = "https://api-football-v1.p.rapidapi.com/v3/predictions"
     querystring = {"fixture": fixture_id}
     headers = {
@@ -116,6 +172,7 @@ def fetch_and_store_predictions(fixture_id):
             
         pred = prediction_data['response'][0]
         
+        # Store main prediction data (your existing code remains the same)
         prediction_record = {
             'fixture_id': fixture_id,
             'winner_team_name': pred['predictions']['winner']['name'] if pred['predictions']['winner'] else None,
@@ -144,7 +201,6 @@ def fetch_and_store_predictions(fixture_id):
             'comp_total_away': pred['comparison']['total']['away']
         }
         
-        # Get the prediction_id from the insert response
         prediction_response = supabase.table('football_predictions').upsert(
             prediction_record,
             on_conflict='fixture_id'
@@ -152,44 +208,21 @@ def fetch_and_store_predictions(fixture_id):
         
         prediction_id = prediction_response.data[0]['id']
         
-        # Store goals distribution for both teams
+        # Process and store goals data for both teams
         for team_side in ['home', 'away']:
-            # Store goals for
-            goals_for = pred['teams'][team_side]['league']['goals']['for']['minute']
-            goals_for_record = {
-                'prediction_id': prediction_id,
-                'team_side': team_side,
-                'goal_type': 'for',
-                'interval_0_45': goals_for['0-45']['total'] or 0,
-                'interval_46_90': goals_for['46-90']['total'] or 0,
-            }
+            team_data = pred['teams'][team_side]
             
-            # Store goals against
-            goals_against = pred['teams'][team_side]['league']['goals']['against']['minute']
-            goals_against_record = {
-                'prediction_id': prediction_id,
-                'team_side': team_side,
-                'goal_type': 'against',
-                'interval_0_45': goals_against['0-45']['total'] or 0,
-                'interval_46_90': goals_against['46-90']['total'] or 0,
-            }
+            # Process and store goals
+            goals_records = process_goals_data(team_data, team_side)
+            for record in goals_records:
+                record['prediction_id'] = prediction_id
+                supabase.table('football_predictions_goals').insert(record).execute()
             
-            # Insert goals records
-            supabase.table('football_predictions_goals').insert([goals_for_record, goals_against_record]).execute()
-            
-            # Store cards distribution
-            for card_type in ['yellow', 'red']:
-                cards = pred['teams'][team_side]['league']['cards'][card_type]
-                cards_record = {
-                    'prediction_id': prediction_id,
-                    'team_side': team_side,
-                    'card_type': card_type,
-                    'interval_0_45': cards['0-45']['total'] or 0,
-                    'interval_46_90': cards['46-90']['total'] or 0,
-                }
-                
-                # Insert cards record
-                supabase.table('football_predictions_cards').insert(cards_record).execute()
+            # Process and store cards
+            cards_records = process_cards_data(team_data, team_side)
+            for record in cards_records:
+                record['prediction_id'] = prediction_id
+                supabase.table('football_predictions_cards').insert(record).execute()
         
         logging.info(f"Stored predictions and statistics for fixture {fixture_id}")
         return True
