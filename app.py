@@ -323,6 +323,47 @@ def get_fixtures_stats(date):
         logging.error(f"Error getting fixtures stats: {str(e)}")
         return {'total': 0, 'major': 0}
 
+def get_major_fixtures_details(date):
+    """Get detailed fixture information for major leagues on a specific date"""
+    try:
+        major_leagues = load_major_leagues()
+        major_league_ids = [league['id'] for league in major_leagues]
+        
+        fixtures = supabase.table('football_fixtures') \
+            .select('*') \
+            .gte('fixture_date', f"{date}T00:00:00Z") \
+            .lt('fixture_date', f"{date + timedelta(days=1)}T00:00:00Z") \
+            .in_('league_id', major_league_ids) \
+            .execute()
+            
+        return fixtures.data
+    except Exception as e:
+        logging.error(f"Error getting major fixtures details: {str(e)}")
+        return []
+
+def get_fixture_predictions(fixture_id):
+    """Get predictions and stats for a specific fixture"""
+    try:
+        # Get predictions
+        predictions = supabase.table('football_predictions') \
+            .select('*') \
+            .eq('fixture_id', fixture_id) \
+            .execute()
+            
+        # Get stats
+        stats = supabase.table('football_predictions_stats') \
+            .select('*') \
+            .eq('fixture_id', fixture_id) \
+            .execute()
+            
+        return {
+            'predictions': predictions.data[0] if predictions.data else None,
+            'stats': stats.data[0] if stats.data else None
+        }
+    except Exception as e:
+        logging.error(f"Error getting fixture predictions: {str(e)}")
+        return {'predictions': None, 'stats': None}
+
 def scheduled_task():
     """Task to fetch fixtures for current day and next two days"""
     while True:
@@ -415,6 +456,45 @@ def main():
     stats = get_fixtures_stats(selected_date)
     st.metric(f"Date: {selected_date}", f"Total: {stats['total']}")
     st.metric("Major Leagues", stats['major'])
+
+    # Display major fixtures
+    st.subheader("Major Fixtures")
+    major_fixtures = get_major_fixtures_details(selected_date)
+    
+    if not major_fixtures:
+        st.info("No major fixtures found for this date.")
+    else:
+        for fixture in major_fixtures:
+            # Create a container for each fixture
+            with st.container():
+                col1, col2, col3, col4 = st.columns([3, 2, 2, 1])
+                
+                # Format datetime for display
+                fixture_time = datetime.fromisoformat(fixture['fixture_date'].replace('Z', '+00:00'))
+                local_time = fixture_time.astimezone(pytz.UTC).strftime('%H:%M')
+                
+                with col1:
+                    st.write(f"**{fixture['league_name']}**")
+                    st.write(f"🕒 {local_time}")
+                
+                with col2:
+                    st.image(fixture['home_team_logo'], width=30)
+                    st.write(fixture['home_team_name'])
+                
+                with col3:
+                    st.image(fixture['away_team_logo'], width=30)
+                    st.write(fixture['away_team_name'])
+                
+                with col4:
+                    if st.button("Ask AI", key=f"ask_ai_{fixture['fixture_id']}"):
+                        data = get_fixture_predictions(fixture['fixture_id'])
+                        if data['predictions'] and data['stats']:
+                            st.session_state[f"prediction_data_{fixture['fixture_id']}"] = data
+                            st.success("Data loaded! (Further processing to be implemented)")
+                        else:
+                            st.warning("No prediction data available for this fixture")
+                
+                st.divider()
 
 if __name__ == "__main__":
     main()
