@@ -95,21 +95,40 @@ def fetch_and_store_fixtures(date):
 def calculate_interval_averages(minute_data, games_played):
     """
     Calculate averages for first and second half from minute data
+    Return None if no valid data available
     """
     if games_played == 0:
-        return 0, 0
-        
-    first_half = sum(
-        minute_data[interval]["total"] or 0 
-        for interval in ["0-15", "16-30", "31-45"]
-    ) / games_played
+        return None, None  # Return None if no games played
     
-    second_half = sum(
-        minute_data[interval]["total"] or 0 
-        for interval in ["46-60", "61-75", "76-90"]
-    ) / games_played
+    # Check if we have any non-null data
+    first_half_intervals = ["0-15", "16-30", "31-45"]
+    second_half_intervals = ["46-60", "61-75", "76-90"]
     
-    return round(first_half, 2), round(second_half, 2)
+    has_first_half_data = any(
+        minute_data.get(interval, {}).get("total") is not None 
+        for interval in first_half_intervals
+    )
+    
+    has_second_half_data = any(
+        minute_data.get(interval, {}).get("total") is not None 
+        for interval in second_half_intervals
+    )
+    
+    # Calculate averages only if we have data
+    first_half = (sum(
+        minute_data.get(interval, {}).get("total") or 0 
+        for interval in first_half_intervals
+    ) / games_played) if has_first_half_data else None
+    
+    second_half = (sum(
+        minute_data.get(interval, {}).get("total") or 0 
+        for interval in second_half_intervals
+    ) / games_played) if has_second_half_data else None
+    
+    return (
+        round(first_half, 2) if first_half is not None else None,
+        round(second_half, 2) if second_half is not None else None
+    )
 
 def process_team_stats(team_data):
     """
