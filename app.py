@@ -7,9 +7,9 @@ from supabase import create_client
 import requests
 import time
 import logging
-from streamlit.runtime.scriptrunner import add_script_run_ctx
-import threading
 import json
+from langchain.prompts import PromptTemplate
+from langchain_anthropic import ChatAnthropic
 
 # Set up logging
 logging.basicConfig(
@@ -364,6 +364,24 @@ def get_fixture_predictions(fixture_id):
         logging.error(f"Error getting fixture predictions: {str(e)}")
         return {'predictions': None, 'stats': None}
 
+def get_teams_names(fixture_id):
+    """Get the names of the teams for a specific fixture."""
+    try:
+        fixture = supabase.table('football_fixtures') \
+            .select('home_team_name, away_team_name') \
+            .eq('fixture_id', fixture_id) \
+            .execute()
+        
+        if fixture.data:
+            return {
+                'home_team_name': fixture.data[0]['home_team_name'],
+                'away_team_name': fixture.data[0]['away_team_name']
+            }
+        return None
+    except Exception as e:
+        logging.error(f"Error getting team names for fixture {fixture_id}: {str(e)}")
+        return None
+
 def scheduled_task():
     """Task to fetch fixtures for current day and next two days"""
     while True:
@@ -392,6 +410,53 @@ def scheduled_task():
         else:
             # Check every minute
             time.sleep(60)
+
+def insert_match_predictions(fixture_id, model_response):
+    """Insert match predictions into the database."""
+    try:
+        # Prepare the data for insertion
+        predictions = model_response['predictions']
+        match_predictions = model_response['match_predictions']
+        combo_predictions = model_response['combo_predictions']
+        reasoning = model_response['reasoning']
+
+        # Insert into match_predictions table
+        supabase.table('match_predictions').insert({
+            'fixture_id': fixture_id,
+            'half_time_score': predictions['half_time_score']['prediction'],
+            'half_time_confidence': predictions['half_time_score']['confidence'],
+            'full_time_score': predictions['full_time_score']['prediction'],
+            'full_time_confidence': predictions['full_time_score']['confidence'],
+            'prediction_1': match_predictions['prediction_1']['prediction'],
+            'prediction_1_confidence': match_predictions['prediction_1']['confidence'],
+            'prediction_2': match_predictions['prediction_2']['prediction'],
+            'prediction_2_confidence': match_predictions['prediction_2']['confidence'],
+            'prediction_3': match_predictions['prediction_3']['prediction'],
+            'prediction_3_confidence': match_predictions['prediction_3']['confidence'],
+            'prediction_4': match_predictions['prediction_4']['prediction'],
+            'prediction_4_confidence': match_predictions['prediction_4']['confidence'],
+            'prediction_5': match_predictions['prediction_5']['prediction'],
+            'prediction_5_confidence': match_predictions['prediction_5']['confidence'],
+            'combo_1': combo_predictions['combo_1']['prediction'],
+            'combo_1_confidence': combo_predictions['combo_1']['confidence'],
+            'combo_2': combo_predictions['combo_2']['prediction'],
+            'combo_2_confidence': combo_predictions['combo_2']['confidence'],
+            'combo_3': combo_predictions['combo_3']['prediction'],
+            'combo_3_confidence': combo_predictions['combo_3']['confidence'],
+            'combo_4': combo_predictions['combo_4']['prediction'],
+            'combo_4_confidence': combo_predictions['combo_4']['confidence'],
+            'combo_5': combo_predictions['combo_5']['prediction'],
+            'combo_5_confidence': combo_predictions['combo_5']['confidence'],
+            'offensive_analysis': reasoning['offensive_analysis'],
+            'defensive_analysis': reasoning['defensive_analysis'],
+            'form_analysis': reasoning['form_analysis'],
+            'statistical_indicators': reasoning['statistical_indicators'],
+            'key_insights': reasoning['key_insights']
+        }).execute()
+
+        logging.info(f"Successfully inserted predictions for fixture {fixture_id}")
+    except Exception as e:
+        logging.error(f"Error inserting match predictions for fixture {fixture_id}: {str(e)}")
 
 def main():
     st.title("⚽ Football Data Manager ⚽")
@@ -487,10 +552,73 @@ def main():
                 
                 with col4:
                     if st.button("Ask AI", key=f"ask_ai_{fixture['fixture_id']}"):
+                        teams_names = get_teams_names(fixture['fixture_id'])                      
                         data = get_fixture_predictions(fixture['fixture_id'])
                         if data['predictions'] and data['stats']:
-                            st.session_state[f"prediction_data_{fixture['fixture_id']}"] = data
-                            st.success("Data loaded! (Further processing to be implemented)")
+                            # Prepare the restructured data as a string
+                            restructured_data = f"""
+home_team_name: {teams_names['home_team_name']},
+away_team_name: {teams_names['away_team_name']},
+comp_form_home: {data['predictions']['comp_form_home']},
+comp_form_away: {data['predictions']['comp_form_away']},
+comp_att_home: {data['predictions']['comp_att_home']},
+comp_att_away: {data['predictions']['comp_att_away']},
+comp_def_home: {data['predictions']['comp_def_home']},
+comp_def_away: {data['predictions']['comp_def_away']},
+comp_poisson_home: {data['predictions']['comp_poisson_home']},
+comp_poisson_away: {data['predictions']['comp_poisson_away']},
+comp_h2h_home: {data['predictions']['comp_h2h_home']},
+comp_h2h_away: {data['predictions']['comp_h2h_away']},
+comp_goals_home: {data['predictions']['comp_goals_home']},
+comp_goals_away: {data['predictions']['comp_goals_away']},
+comp_total_home: {data['predictions']['comp_total_home']},
+comp_total_away: {data['predictions']['comp_total_away']},
+home_team_yellow_cards_first_half_average: {data['stats']['home_team_yellow_cards_first_half_average']},
+home_team_yellow_cards_second_half_average: {data['stats']['home_team_yellow_cards_second_half_average']},
+home_team_scored_home_first_half_average: {data['stats']['home_team_scored_home_first_half_average']},
+home_team_scored_home_second_half_average: {data['stats']['home_team_scored_home_second_half_average']},
+home_team_scored_away_first_half_average: {data['stats']['home_team_scored_away_first_half_average']},
+home_team_scored_away_second_half_average: {data['stats']['home_team_scored_away_second_half_average']},
+home_team_conceded_home_first_half_average: {data['stats']['home_team_conceded_home_first_half_average']},
+home_team_conceded_home_second_half_average: {data['stats']['home_team_conceded_home_second_half_average']},
+home_team_conceded_away_first_half_average: {data['stats']['home_team_conceded_away_first_half_average']},
+home_team_conceded_away_second_half_average: {data['stats']['home_team_conceded_away_second_half_average']},
+away_team_yellow_cards_first_half_average: {data['stats']['away_team_yellow_cards_first_half_average']},
+away_team_yellow_cards_second_half_average: {data['stats']['away_team_yellow_cards_second_half_average']},
+away_team_scored_home_first_half_average: {data['stats']['away_team_scored_home_first_half_average']},
+away_team_scored_home_second_half_average: {data['stats']['away_team_scored_home_second_half_average']},
+away_team_scored_away_first_half_average: {data['stats']['away_team_scored_away_first_half_average']},
+away_team_scored_away_second_half_average: {data['stats']['away_team_scored_away_second_half_average']},
+away_team_conceded_home_first_half_average: {data['stats']['away_team_conceded_home_first_half_average']},
+away_team_conceded_home_second_half_average: {data['stats']['away_team_conceded_home_second_half_average']},
+away_team_conceded_away_first_half_average: {data['stats']['away_team_conceded_away_first_half_average']},
+away_team_conceded_away_second_half_average: {data['stats']['away_team_conceded_away_second_half_average']},
+                            """
+
+                            # Call the LLM
+                            with open("prompt.md", "r") as f:
+                                template = f.read()
+                            prompt = PromptTemplate.from_template(template)
+                            os.environ["ANTHROPIC_API_KEY"] = str(os.getenv("LLM_API_KEY")) 
+                            # Initialize LLM
+                            llm = ChatAnthropic(
+                                model_name="claude-3-5-sonnet-20241022",
+                                temperature=0.7,
+                                max_tokens=4000,
+                                api_key=str(os.getenv("LLM_API_KEY"))
+                            )
+                            with open("json_example.json", "r") as f:
+                                json_example = f.read()
+                            complete_prompt = prompt.format(fixture_data=restructured_data, json_example=json_example)
+                            print(complete_prompt)
+                            model_response = llm.invoke(complete_prompt)
+                            model_response_json = json.loads(model_response.content)
+
+                            # Insert the response into the database
+                            insert_match_predictions(fixture['fixture_id'], model_response_json)
+
+                            # Display the model response
+                            st.success("AI Response generated")
                         else:
                             st.warning("No prediction data available for this fixture")
                 

@@ -1,0 +1,64 @@
+{
+    "fixture_id": "",
+    "predictions": {
+        "half_time_score": {
+            "prediction": "",
+            "confidence": 0
+        },
+        "full_time_score": {
+            "prediction": "",
+            "confidence": 0
+        }
+    },
+    "match_predictions": {
+        "prediction_1": {
+            "prediction": "",
+            "confidence": 0
+        },
+        "prediction_2": {
+            "prediction": "",
+            "confidence": 0
+        },
+        "prediction_3": {
+            "prediction": "",
+            "confidence": 0
+        },
+        "prediction_4": {
+            "prediction": "",
+            "confidence": 0
+        },
+        "prediction_5": {
+            "prediction": "",
+            "confidence": 0
+        }
+    },
+    "combo_predictions": {
+        "combo_1": {
+            "prediction": "",
+            "confidence": 0
+        },
+        "combo_2": {
+            "prediction": "",
+            "confidence": 0
+        },
+        "combo_3": {
+            "prediction": "",
+            "confidence": 0
+        },
+        "combo_4": {
+            "prediction": "",
+            "confidence": 0
+        },
+        "combo_5": {
+            "prediction": "",
+            "confidence": 0
+        }
+    },
+    "reasoning": {
+        "offensive_analysis": "",
+        "defensive_analysis": "",
+        "form_analysis": "",
+        "statistical_indicators": "",
+        "key_insights": ""
+    }
+}
