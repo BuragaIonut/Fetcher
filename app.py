@@ -155,7 +155,7 @@ def process_team_stats(team_data):
     return stats
 
 def fetch_and_store_predictions(fixture_id):
-    """Modified version of your existing function"""
+    """Fetch and store predictions with additional statistics"""
     url = "https://api-football-v1.p.rapidapi.com/v3/predictions"
     querystring = {"fixture": fixture_id}
     headers = {
@@ -178,6 +178,7 @@ def fetch_and_store_predictions(fixture_id):
             
         pred = prediction_data['response'][0]
         
+        # Store main prediction data
         prediction_record = {
             'fixture_id': fixture_id,
             'winner_team_name': pred['predictions']['winner']['name'] if pred['predictions']['winner'] else None,
@@ -206,6 +207,7 @@ def fetch_and_store_predictions(fixture_id):
             'comp_total_away': pred['comparison']['total']['away']
         }
         
+        # Store main predictions
         supabase.table('football_predictions').upsert(
             prediction_record,
             on_conflict='fixture_id'
@@ -215,7 +217,7 @@ def fetch_and_store_predictions(fixture_id):
         home_stats = process_team_stats(pred['teams']['home'])
         away_stats = process_team_stats(pred['teams']['away'])
         
-        # Prepare record
+        # Prepare stats record
         stats_record = {
             'fixture_id': fixture_id,
             # Home team stats
@@ -242,7 +244,7 @@ def fetch_and_store_predictions(fixture_id):
             'away_team_conceded_away_second_half_average': away_stats.get('conceded_away_second_half_average'),
         }
         
-        # Upsert the record
+        # Store the stats
         supabase.table('football_predictions_stats').upsert(
             stats_record,
             on_conflict='fixture_id'
