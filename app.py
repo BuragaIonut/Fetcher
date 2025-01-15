@@ -10,6 +10,9 @@ import logging
 import json
 from langchain.prompts import PromptTemplate
 from langchain_anthropic import ChatAnthropic
+from concurrent.futures import ThreadPoolExecutor
+import asyncio
+import aiohttp
 
 # Set up logging
 logging.basicConfig(
@@ -323,8 +326,18 @@ def get_fixtures_stats(date):
         logging.error(f"Error getting fixtures stats: {str(e)}")
         return {'total': 0, 'major': 0}
 
-def get_major_fixtures_details(date):
-    """Get detailed fixture information for major leagues on a specific date"""
+def get_common_timezones():
+    return [
+        'UTC',
+        'Europe/Bucharest',
+        'Europe/London',
+        'Europe/Paris',
+        'Europe/Madrid',
+        'America/New_York',
+        'Asia/Tokyo'
+    ]
+
+def get_major_fixtures_details(date, timezone='Europe/Bucharest'):
     try:
         major_leagues = load_major_leagues()
         major_league_ids = [league['id'] for league in major_leagues]
@@ -335,6 +348,12 @@ def get_major_fixtures_details(date):
             .lt('fixture_date', f"{date + timedelta(days=1)}T00:00:00Z") \
             .in_('league_id', major_league_ids) \
             .execute()
+            
+        # Convert times to selected timezone
+        for fixture in fixtures.data:
+            utc_time = datetime.fromisoformat(fixture['fixture_date'].replace('Z', '+00:00'))
+            local_time = utc_time.astimezone(pytz.timezone(timezone))
+            fixture['local_time'] = local_time
             
         return fixtures.data
     except Exception as e:
@@ -458,8 +477,57 @@ def insert_match_predictions(fixture_id, model_response):
     except Exception as e:
         logging.error(f"Error inserting match predictions for fixture {fixture_id}: {str(e)}")
 
+async def fetch_prediction_async(session, fixture_id, api_key):
+    url = "https://api-football-v1.p.rapidapi.com/v3/predictions"
+    headers = {
+        "x-rapidapi-key": api_key,
+        "x-rapidapi-host": "api-football-v1.p.rapidapi.com"
+    }
+    
+    try:
+        async with session.get(url, params={"fixture": fixture_id}, headers=headers) as response:
+            if response.status == 200:
+                data = await response.json()
+                return fixture_id, data
+            return fixture_id, None
+    except Exception as e:
+        logging.error(f"Error fetching prediction for fixture {fixture_id}: {str(e)}")
+        return fixture_id, None
+
+def get_ai_prediction(fixture_id):
+    """Check if AI prediction exists for a fixture"""
+    try:
+        result = supabase.table('match_predictions') \
+            .select('id') \
+            .eq('fixture_id', fixture_id) \
+            .execute()
+        return len(result.data) > 0
+    except Exception as e:
+        logging.error(f"Error checking AI prediction for fixture {fixture_id}: {str(e)}")
+        return False
+
+def fetch_individual_prediction(fixture_id):
+    """Fetch and store predictions for a specific fixture."""
+    try:
+        if fetch_and_store_predictions(fixture_id):
+            logging.info(f"Successfully fetched predictions for fixture {fixture_id}")
+            return True
+        else:
+            logging.warning(f"No predictions found for fixture {fixture_id}")
+            return False
+    except Exception as e:
+        logging.error(f"Error fetching individual prediction for fixture {fixture_id}: {str(e)}")
+        return False
+
 def main():
     st.title("⚽ Football Data Manager ⚽")
+    
+    # Add timezone selector
+    selected_timezone = st.selectbox(
+        "Select Timezone",
+        get_common_timezones(),
+        index=1  # Default to Bucharest
+    )
     
     # Add date picker
     selected_date = st.date_input(
@@ -497,16 +565,45 @@ def main():
             
             status_text.text(f"Fetching predictions for {selected_date}...")
             
-            # Get fixtures for major leagues
-            fixture_ids = get_major_league_fixtures(selected_date)
-            total_predictions = 0
+            # Get fixtures for major leagues that haven't started yet
+            current_time = datetime.now(pytz.UTC)
+            fixture_ids = []
             
-            for idx, fixture_id in enumerate(fixture_ids):
-                if fetch_and_store_predictions(fixture_id):
-                    total_predictions += 1
-                progress_bar.progress((idx + 1) / len(fixture_ids) if fixture_ids else 1.0)
-                time.sleep(1)  # Respect API rate limits
+            for fixture in get_major_fixtures_details(selected_date):
+                fixture_time = datetime.fromisoformat(fixture['fixture_date'].replace('Z', '+00:00'))
+                if fixture_time > current_time:
+                    fixture_ids.append(fixture['fixture_id'])
             
+            if not fixture_ids:
+                st.warning("No upcoming fixtures found for predictions")
+                return
+            
+            # Async fetch predictions
+            async def fetch_all_predictions():
+                async with aiohttp.ClientSession() as session:
+                    tasks = []
+                    api_key = os.getenv('RAPIDAPI_KEY')
+                    
+                    for fixture_id in fixture_ids:
+                        task = fetch_prediction_async(session, fixture_id, api_key)
+                        tasks.append(task)
+                    
+                    total_predictions = 0
+                    for i, future in enumerate(asyncio.as_completed(tasks)):
+                        fixture_id, result = await future
+                        if result:
+                            # Process and store the prediction
+                            prediction_data = result['response'][0]
+                            # Use your existing store logic here
+                            fetch_and_store_predictions(fixture_id)
+                            total_predictions += 1
+                        
+                        progress_bar.progress((i + 1) / len(fixture_ids))
+                    
+                    return total_predictions
+            
+            # Run async fetch
+            total_predictions = asyncio.run(fetch_all_predictions())
             st.success(f"Successfully stored {total_predictions} predictions")
         
         # Add button to delete predictions
@@ -524,23 +621,21 @@ def main():
 
     # Display major fixtures
     st.subheader("Major Fixtures")
-    major_fixtures = get_major_fixtures_details(selected_date)
+    major_fixtures = get_major_fixtures_details(selected_date, selected_timezone)
     
     if not major_fixtures:
         st.info("No major fixtures found for this date.")
     else:
         for fixture in major_fixtures:
-            # Create a container for each fixture
             with st.container():
-                col1, col2, col3, col4 = st.columns([3, 2, 2, 1])
+                col1, col2, col3, col4, col5 = st.columns([3, 2, 2, 2, 2])  # Added col5 for status
                 
-                # Format datetime for display
-                fixture_time = datetime.fromisoformat(fixture['fixture_date'].replace('Z', '+00:00'))
-                local_time = fixture_time.astimezone(pytz.UTC).strftime('%H:%M')
+                # Use the local time from the fixture
+                local_time = fixture['local_time'].strftime('%H:%M')
                 
                 with col1:
                     st.write(f"**{fixture['league_name']}**")
-                    st.write(f"🕒 {local_time}")
+                    st.write(f"🕒 {local_time} ({selected_timezone})")
                 
                 with col2:
                     st.image(fixture['home_team_logo'], width=30)
@@ -550,7 +645,30 @@ def main():
                     st.image(fixture['away_team_logo'], width=30)
                     st.write(fixture['away_team_name'])
                 
+                # Check for predictions
+                has_prediction = get_fixture_predictions(fixture['fixture_id'])['predictions'] is not None
+                has_ai_prediction = get_ai_prediction(fixture['fixture_id'])
+                
                 with col4:
+                    if has_prediction:
+                        st.write("🌍✅")
+                    else:
+                        st.write("🌍❌")
+                
+                with col5:
+                    if has_ai_prediction:
+                        st.write("🤖✅")
+                    else:
+                        st.write("🤖❌")
+                with col4:
+                    # Button to fetch individual predictions
+                    if st.button("Fetch Prediction", key=f"fetch_pred_{fixture['fixture_id']}"):
+                        if fetch_individual_prediction(fixture['fixture_id']):
+                            st.success(f"Successfully fetched predictions for fixture {fixture['fixture_id']}")
+                        else:
+                            st.warning(f"No predictions found for fixture {fixture['fixture_id']}")
+                
+                with col5:
                     if st.button("Ask AI", key=f"ask_ai_{fixture['fixture_id']}"):
                         teams_names = get_teams_names(fixture['fixture_id'])                      
                         data = get_fixture_predictions(fixture['fixture_id'])
