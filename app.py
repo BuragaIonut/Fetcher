@@ -4,15 +4,15 @@ import pytz
 import os
 from dotenv import load_dotenv
 from supabase import create_client
-import requests
+
 import time
 import logging
 import json
 from langchain.prompts import PromptTemplate
 from langchain_anthropic import ChatAnthropic
-from concurrent.futures import ThreadPoolExecutor
 import asyncio
 import aiohttp
+from typing import List, Dict
 
 # Set up logging
 logging.basicConfig(
@@ -38,8 +38,44 @@ def load_major_leagues():
         logging.error(f"Error loading major leagues: {str(e)}")
         return []
 
-def fetch_and_store_fixtures(date):
-    """Fetch fixtures from API and store them in the new structure"""
+async def store_fixture_async(fixture: Dict, supabase_client):
+    """Async function to store a single fixture"""
+    try:
+        fixture_record = {
+            'fixture_id': fixture['fixture']['id'],
+            'home_team_id': fixture['teams']['home']['id'],
+            'home_team_name': fixture['teams']['home']['name'],
+            'home_team_logo': fixture['teams']['home']['logo'],
+            'away_team_id': fixture['teams']['away']['id'],
+            'away_team_name': fixture['teams']['away']['name'],
+            'away_team_logo': fixture['teams']['away']['logo'],
+            'league_id': fixture['league']['id'],
+            'league_name': fixture['league']['name'],
+            'league_logo': fixture['league']['logo'],
+            'league_flag': fixture['league'].get('flag'),
+            'league_country': fixture['league']['country'],
+            'fixture_date': fixture['fixture']['date'],
+            'venue_id': fixture['fixture']['venue']['id'],
+            'venue_city': fixture['fixture']['venue']['city'],
+            'venue_name': fixture['fixture']['venue']['name'],
+            'ht_home_score': fixture['score']['halftime']['home'],
+            'ht_away_score': fixture['score']['halftime']['away'],
+            'ft_home_score': fixture['score']['fulltime']['home'],
+            'ft_away_score': fixture['score']['fulltime']['away'],
+            'created_at': datetime.utcnow().isoformat()
+        }
+        
+        await supabase_client.table('football_fixtures').upsert(
+            fixture_record,
+            on_conflict='fixture_id'
+        ).execute()
+        return True
+    except Exception as e:
+        logging.error(f"Error storing fixture {fixture['fixture']['id']}: {str(e)}")
+        return False
+
+async def fetch_and_store_fixtures(date):
+    """Fetch fixtures from API and store them asynchronously"""
     url = "https://api-football-v1.p.rapidapi.com/v3/fixtures"
     
     querystring = {"date": str(date)}
@@ -50,47 +86,28 @@ def fetch_and_store_fixtures(date):
     
     try:
         logging.info(f"Fetching fixtures for {date}")
-        fixtures_response = requests.get(url, headers=headers, params=querystring)
-        
-        if fixtures_response.status_code != 200:
-            raise Exception(f"API request failed with status {fixtures_response.status_code}")
-        
-        fixtures_data = fixtures_response.json()
-        stored_count = 0
-        
-        # Store each fixture in Supabase with the new structure
-        for fixture in fixtures_data['response']:
-            fixture_record = {
-                'fixture_id': fixture['fixture']['id'],
-                'home_team_id': fixture['teams']['home']['id'],
-                'home_team_name': fixture['teams']['home']['name'],
-                'home_team_logo': fixture['teams']['home']['logo'],
-                'away_team_id': fixture['teams']['away']['id'],
-                'away_team_name': fixture['teams']['away']['name'],
-                'away_team_logo': fixture['teams']['away']['logo'],
-                'league_id': fixture['league']['id'],
-                'league_name': fixture['league']['name'],
-                'league_logo': fixture['league']['logo'],
-                'league_flag': fixture['league'].get('flag'),
-                'league_country': fixture['league']['country'],
-                'fixture_date': fixture['fixture']['date'],
-                'venue_id': fixture['fixture']['venue']['id'],
-                'venue_city': fixture['fixture']['venue']['city'],
-                'venue_name': fixture['fixture']['venue']['name'],
-                'raw_data': fixture,
-                'created_at': datetime.utcnow().isoformat()
-            }
-            
-            # Upsert the fixture
-            supabase.table('football_fixtures').upsert(
-                fixture_record,
-                on_conflict='fixture_id'
-            ).execute()
-            stored_count += 1
-        
-        logging.info(f"Stored {stored_count} fixtures for {date}")
-        return stored_count
-            
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, headers=headers, params=querystring) as response:
+                if response.status != 200:
+                    raise Exception(f"API request failed with status {response.status}")
+                
+                fixtures_data = await response.json()
+                
+                # Create tasks for all fixtures
+                tasks = [
+                    store_fixture_async(fixture, supabase)
+                    for fixture in fixtures_data['response']
+                ]
+                
+                # Execute all tasks concurrently
+                results = await asyncio.gather(*tasks)
+                
+                # Count successful stores
+                stored_count = sum(1 for result in results if result)
+                
+                logging.info(f"Stored {stored_count} fixtures for {date}")
+                return stored_count
+                
     except Exception as e:
         logging.error(f"Error storing fixtures for {date}: {str(e)}")
         return 0
@@ -176,31 +193,12 @@ def process_team_stats(team_data):
     
     return stats
 
-def fetch_and_store_predictions(fixture_id):
-    """Fetch and store predictions with additional statistics"""
-    url = "https://api-football-v1.p.rapidapi.com/v3/predictions"
-    querystring = {"fixture": fixture_id}
-    headers = {
-        "x-rapidapi-key": os.getenv('RAPIDAPI_KEY'),
-        "x-rapidapi-host": "api-football-v1.p.rapidapi.com"
-    }
-    
+async def store_prediction_async(prediction_data, fixture_id, supabase_client):
+    """Async function to store prediction and stats"""
     try:
-        logging.info(f"Fetching predictions for fixture {fixture_id}")
-        response = requests.get(url, headers=headers, params=querystring)
-        
-        if response.status_code != 200:
-            raise Exception(f"API request failed with status {response.status_code}")
-        
-        prediction_data = response.json()
-        
-        if not prediction_data['response']:
-            logging.warning(f"No prediction data found for fixture {fixture_id}")
-            return False
-            
         pred = prediction_data['response'][0]
         
-        # Store main prediction data
+        # Prepare prediction record
         prediction_record = {
             'fixture_id': fixture_id,
             'winner_team_name': pred['predictions']['winner']['name'] if pred['predictions']['winner'] else None,
@@ -229,13 +227,7 @@ def fetch_and_store_predictions(fixture_id):
             'comp_total_away': pred['comparison']['total']['away']
         }
         
-        # Store main predictions
-        supabase.table('football_predictions').upsert(
-            prediction_record,
-            on_conflict='fixture_id'
-        ).execute()
-        
-        # Process stats for both teams
+        # Process stats
         home_stats = process_team_stats(pred['teams']['home'])
         away_stats = process_team_stats(pred['teams']['away'])
         
@@ -266,18 +258,50 @@ def fetch_and_store_predictions(fixture_id):
             'away_team_conceded_away_second_half_average': away_stats.get('conceded_away_second_half_average'),
         }
         
-        # Store the stats
-        supabase.table('football_predictions_stats').upsert(
-            stats_record,
-            on_conflict='fixture_id'
-        ).execute()
+        # Execute both operations concurrently
+        await asyncio.gather(
+            supabase_client.table('football_predictions').upsert(
+                prediction_record,
+                on_conflict='fixture_id'
+            ).execute(),
+            supabase_client.table('football_predictions_stats').upsert(
+                stats_record,
+                on_conflict='fixture_id'
+            ).execute()
+        )
         
-        logging.info(f"Stored predictions and statistics for fixture {fixture_id}")
         return True
-        
     except Exception as e:
-        logging.error(f"Error storing predictions for fixture {fixture_id}: {str(e)}")
+        logging.error(f"Error storing prediction for fixture {fixture_id}: {str(e)}")
         return False
+
+async def fetch_predictions_batch(fixture_ids: List[int]):
+    """Fetch and store predictions for multiple fixtures concurrently"""
+    async with aiohttp.ClientSession() as session:
+        tasks = []
+        api_key = os.getenv('RAPIDAPI_KEY')
+        
+        # Create tasks for all fixtures
+        for fixture_id in fixture_ids:
+            task = fetch_prediction_async(session, fixture_id, api_key)
+            tasks.append(task)
+        
+        # Process results as they complete
+        successful_predictions = 0
+        failed_predictions = []
+        
+        for completed_task in asyncio.as_completed(tasks):
+            fixture_id, result = await completed_task
+            if result and result.get('response'):
+                success = await store_prediction_async(result, fixture_id, supabase)
+                if success:
+                    successful_predictions += 1
+                else:
+                    failed_predictions.append(fixture_id)
+            else:
+                failed_predictions.append(fixture_id)
+        
+        return successful_predictions, failed_predictions
 
 def get_major_league_fixtures(date):
     """Get fixtures from major leagues for a specific date"""
@@ -416,7 +440,7 @@ def scheduled_task():
                 # Process current day and next two days
                 for i in range(3):
                     target_date = current_date + timedelta(days=i)
-                    stored_count = fetch_and_store_fixtures(target_date)
+                    asyncio.run(fetch_and_store_fixtures(target_date))
                     time.sleep(5)  # Respect API rate limits
                 
                 logging.info("Scheduled task completed successfully")
@@ -506,13 +530,17 @@ def get_ai_prediction(fixture_id):
         logging.error(f"Error checking AI prediction for fixture {fixture_id}: {str(e)}")
         return False
 
-def fetch_individual_prediction(fixture_id):
+async def fetch_individual_prediction(fixture_id):
     """Fetch and store predictions for a specific fixture."""
     try:
-        if fetch_and_store_predictions(fixture_id):
-            logging.info(f"Successfully fetched predictions for fixture {fixture_id}")
-            return True
-        else:
+        async with aiohttp.ClientSession() as session:
+            api_key = os.getenv('RAPIDAPI_KEY')
+            fixture_id_result = await fetch_prediction_async(session, fixture_id, api_key)
+            if fixture_id_result[1] and fixture_id_result[1].get('response'):
+                success = await store_prediction_async(fixture_id_result[1], fixture_id, supabase)
+                if success:
+                    logging.info(f"Successfully fetched predictions for fixture {fixture_id}")
+                    return True
             logging.warning(f"No predictions found for fixture {fixture_id}")
             return False
     except Exception as e:
@@ -547,7 +575,7 @@ def main():
             status_text = st.empty()
             
             status_text.text(f"Fetching fixtures for {selected_date}...")
-            stored_count = fetch_and_store_fixtures(selected_date)
+            stored_count = asyncio.run(fetch_and_store_fixtures(selected_date))
             progress_bar.progress(1.0)
             
             st.success(f"Successfully stored {stored_count} fixtures")
@@ -565,7 +593,7 @@ def main():
             
             status_text.text(f"Fetching predictions for {selected_date}...")
             
-            # Get fixtures for major leagues that haven't started yet
+            # Get upcoming fixtures
             current_time = datetime.now(pytz.UTC)
             fixture_ids = []
             
@@ -578,33 +606,29 @@ def main():
                 st.warning("No upcoming fixtures found for predictions")
                 return
             
-            # Async fetch predictions
-            async def fetch_all_predictions():
-                async with aiohttp.ClientSession() as session:
-                    tasks = []
-                    api_key = os.getenv('RAPIDAPI_KEY')
-                    
-                    for fixture_id in fixture_ids:
-                        task = fetch_prediction_async(session, fixture_id, api_key)
-                        tasks.append(task)
-                    
-                    total_predictions = 0
-                    for i, future in enumerate(asyncio.as_completed(tasks)):
-                        fixture_id, result = await future
-                        if result:
-                            # Process and store the prediction
-                            prediction_data = result['response'][0]
-                            # Use your existing store logic here
-                            fetch_and_store_predictions(fixture_id)
-                            total_predictions += 1
-                        
-                        progress_bar.progress((i + 1) / len(fixture_ids))
-                    
-                    return total_predictions
+            # Fetch predictions in batches
+            BATCH_SIZE = 5  # Adjust based on API rate limits
+            successful_total = 0
+            failed_ids = []
             
-            # Run async fetch
-            total_predictions = asyncio.run(fetch_all_predictions())
-            st.success(f"Successfully stored {total_predictions} predictions")
+            total_batches = (len(fixture_ids) + BATCH_SIZE - 1) // BATCH_SIZE
+            
+            for i in range(0, len(fixture_ids), BATCH_SIZE):
+                batch = fixture_ids[i:i + BATCH_SIZE]
+                successful, failed = asyncio.run(fetch_predictions_batch(batch))
+                successful_total += successful
+                failed_ids.extend(failed)
+                
+                # Update progress (ensure it doesn't exceed 1.0)
+                current_batch = (i // BATCH_SIZE) + 1
+                progress = min(current_batch / total_batches, 1.0)
+                progress_bar.progress(progress)
+                
+                time.sleep(1)  # Respect API rate limits
+            
+            if failed_ids:
+                st.warning(f"Failed to fetch predictions for {len(failed_ids)} fixtures")
+            st.success(f"Successfully stored {successful_total} predictions")
         
         # Add button to delete predictions
         if st.button("Delete Predictions for Selected Date"):
