@@ -13,7 +13,7 @@ SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # API credentials
-API_KEY = os.getenv("RAPIDAPI_KEY")
+API_KEY = os.getenv("FIXTURES_API_KEY")
 API_HOST = "api-football-v1.p.rapidapi.com"
 
 def retry_on_failure(max_attempts=3, delay_seconds=1):

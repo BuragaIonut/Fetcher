@@ -21,6 +21,26 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
+    
+    - name: Check environment variables
+      run: |
+        if [ -z "$SUPABASE_URL" ]; then
+          echo "Error: SUPABASE_URL is not set"
+          exit 1
+        fi
+        if [ -z "$SUPABASE_KEY" ]; then
+          echo "Error: SUPABASE_KEY is not set"
+          exit 1
+        fi
+        if [ -z "$RAPIDAPI_KEY" ]; then
+          echo "Error: RAPIDAPI_KEY is not set"
+          exit 1
+        fi
+        echo "All required environment variables are set"
+      env:
+        SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        RAPIDAPI_KEY: ${{ secrets.RAPIDAPI_KEY }}
         
     - name: Run fixture fetcher
       env:
